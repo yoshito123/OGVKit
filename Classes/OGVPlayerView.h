@@ -63,4 +63,6 @@
 -(void)pause;
 -(void)seek:(float)seconds;
 
+-(OGVPlayerState *)state;
+
 @end

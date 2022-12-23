@@ -86,6 +86,11 @@ static BOOL OGVPlayerViewDidRegisterIconFont = NO;
     return _sourceURL;
 }
 
+- (OGVPlayerState *)state
+{
+    return state;
+}
+
 - (void)setSourceURL:(NSURL *)sourceURL
 {
     self.inputStream = [OGVInputStream inputStreamWithURL:sourceURL];
