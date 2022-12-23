@@ -132,24 +132,24 @@ Pod::Spec.new do |s|
 
   # Video decoder module subspecs
   s.subspec "TheoraDecoder" do |stheoradecoder|
-    stheoradecoder.xcconfig = { 'OTHER_CFLAGS' => '-DOGVKIT_HAVE_THEORA_DECODER' }
+    stheoradecoder.xcconfig = { 'OTHER_CFLAGS' => 'OGVKIT_HAVE_THEORA_DECODER' }
     stheoradecoder.dependency 'OGVKit/Core'
     stheoradecoder.dependency 'libtheora', '1.2.0-3'
   end
   s.subspec "VP8Decoder" do |svp8decoder|
-    svp8decoder.xcconfig = { 'OTHER_CFLAGS' => '-DOGVKIT_HAVE_VP8_DECODER' }
+    svp8decoder.xcconfig = { 'OTHER_CFLAGS' => 'OGVKIT_HAVE_VP8_DECODER' }
     svp8decoder.dependency 'OGVKit/Core'
     svp8decoder.dependency 'libvpx', '~>1.7.0'
   end
 
   # Audio decoder module subspecs
   s.subspec "VorbisDecoder" do |svorbisdecoder|
-    svorbisdecoder.xcconfig = { 'OTHER_CFLAGS' => '-DOGVKIT_HAVE_VORBIS_DECODER' }
+    svorbisdecoder.xcconfig = { 'OTHER_CFLAGS' => 'OGVKIT_HAVE_VORBIS_DECODER' }
     svorbisdecoder.dependency 'OGVKit/Core'
     svorbisdecoder.dependency 'libvorbis'
   end
   s.subspec "OpusDecoder" do |sopusdecoder|
-    sopusdecoder.xcconfig = { 'OTHER_CFLAGS' => '-DOGVKIT_HAVE_OPUS_DECODER'  }
+    sopusdecoder.xcconfig = { 'OTHER_CFLAGS' => 'OGVKIT_HAVE_OPUS_DECODER'  }
     sopusdecoder.dependency 'OGVKit/Core'
     sopusdecoder.dependency 'libopus'
     sopusdecoder.source_files = "opus-tools/src/opus_header.h",
@@ -174,7 +174,7 @@ Pod::Spec.new do |s|
   end
 
   s.subspec "EncoderCore" do |scoreenc|
-    scoreenc.xcconfig = { 'OTHER_CFLAGS' => '-DOGVKIT_HAVE_ENCODER' }
+    scoreenc.xcconfig = { 'OTHER_CFLAGS' => 'OGVKIT_HAVE_ENCODER' }
     scoreenc.source_files = "Classes/OGVPacket.h",
                             "Classes/OGVPacket.m",
                             "Classes/OGVMuxer.h",
@@ -199,21 +199,21 @@ Pod::Spec.new do |s|
   end
 
   s.subspec "VorbisEncoder" do |svorbisenc|
-    svorbisenc.xcconfig = { 'OTHER_CFLAGS' => '-DOGVKIT_HAVE_VORBIS_ENCODER' }
+    svorbisenc.xcconfig = { 'OTHER_CFLAGS' => 'OGVKIT_HAVE_VORBIS_ENCODER' }
     svorbisenc.dependency 'OGVKit/EncoderCore'
     svorbisenc.source_files = "Classes/OGVVorbisEncoder.h",
                               "Classes/OGVVorbisEncoder.m"
   end
 
   s.subspec "VP8Encoder" do |svp8enc|
-    svp8enc.xcconfig = { 'OTHER_CFLAGS' => '-DOGVKIT_HAVE_VP8_ENCODER' }
+    svp8enc.xcconfig = { 'OTHER_CFLAGS' => 'OGVKIT_HAVE_VP8_ENCODER' }
     svp8enc.dependency 'OGVKit/EncoderCore'
     svp8enc.source_files = "Classes/OGVVP8Encoder.h",
                            "Classes/OGVVP8Encoder.m"
   end
 
   s.subspec "WebMMuxer" do |swebmmux|
-    swebmmux.xcconfig = { 'OTHER_CFLAGS' => '-DOGVKIT_HAVE_WEBM_MUXER' }
+    swebmmux.xcconfig = { 'OTHER_CFLAGS' => 'OGVKIT_HAVE_WEBM_MUXER' }
     swebmmux.dependency 'OGVKit/EncoderCore'
     swebmmux.dependency 'WebM'
     swebmmux.source_files = "Classes/OGVWebMMuxer.h",
