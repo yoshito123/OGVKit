@@ -14,18 +14,18 @@
 
 #include <oggz/oggz.h>
 
-#ifdef OGVKIT_HAVE_VORBIS_DECODER
+//#ifdef OGVKIT_HAVE_VORBIS_DECODER
 #include <vorbis/codec.h>
-#endif
+//#endif
 
-#ifdef OGVKIT_HAVE_THEORA_DECODER
+//#ifdef OGVKIT_HAVE_THEORA_DECODER
 #include <theora/theoradec.h>
-#endif
+//#endif
 
-#ifdef OGVKIT_HAVE_OPUS_DECODER
+//#ifdef OGVKIT_HAVE_OPUS_DECODER
 #include "libopus/opus_multistream.h"
 #include "opus_header.h"
-#endif
+//#endif
 
 #include "skeleton.h"
 
@@ -110,7 +110,7 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
 
     float duration;
 
-#ifdef OGVKIT_HAVE_THEORA_DECODER
+//#ifdef OGVKIT_HAVE_THEORA_DECODER
     /* Video decode state */
     //ogg_stream_state  theoraStreamState;
     th_info           theoraInfo;
@@ -120,18 +120,18 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
     
     int              theora_p;
     int              theora_processing_headers;
-#endif
+//#endif
     
     /* Audio decode state */
-#ifdef OGVKIT_HAVE_VORBIS_DECODER
+//#ifdef OGVKIT_HAVE_VORBIS_DECODER
     int              vorbis_processing_headers;
     //ogg_stream_state vo;
     vorbis_info      vi;
     vorbis_dsp_state vd;
     vorbis_block     vb;
     vorbis_comment   vc;
-#endif
-#ifdef OGVKIT_HAVE_OPUS_DECODER
+//#endif
+//#ifdef OGVKIT_HAVE_OPUS_DECODER
     int              opus_processing_headers;
 
     OpusMSDecoder    *opusDecoder;
@@ -139,7 +139,7 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
     float* opusPcmInterleaved;
     /* 120ms at 48000 */
 #define OPUS_MAX_FRAME_SIZE (960*6)
-#endif
+//#endif
 
     enum AppState {
         STATE_BEGIN,
@@ -173,17 +173,17 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
         videoPackets = [[OGVQueue alloc] init];
         audioPackets = [[OGVQueue alloc] init];
 
-#ifdef OGVKIT_HAVE_VORBIS_DECODER
+//#ifdef OGVKIT_HAVE_VORBIS_DECODER
         /* init supporting Vorbis structures needed in header parsing */
         vorbis_info_init(&vi);
         vorbis_comment_init(&vc);
-#endif
+//#endif
 
-#ifdef OGVKIT_HAVE_THEORA_DECODER
+//#ifdef OGVKIT_HAVE_THEORA_DECODER
         /* init supporting Theora structures needed in header parsing */
         th_comment_init(&theoraComment);
         th_info_init(&theoraInfo);
-#endif
+//#endif
 
         skeleton = oggskel_new();
     }
@@ -218,7 +218,7 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
 
     OggzStreamContent content = oggz_stream_get_content(oggz, serialno);
 
-#ifdef OGVKIT_HAVE_THEORA_DECODER
+//#ifdef OGVKIT_HAVE_THEORA_DECODER
     if (!videoStream && content == OGGZ_CONTENT_THEORA) {
         videoCodec = content;
         videoStream = serialno;
@@ -235,9 +235,9 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
             return OGGZ_STOP_ERR;
         }
     }
-#endif /* OGVKIT_HAVE_THEORA_DECODER */
+//#endif /* OGVKIT_HAVE_THEORA_DECODER */
 
-#ifdef OGVKIT_HAVE_VORBIS_DECODER
+//#ifdef OGVKIT_HAVE_VORBIS_DECODER
     if (!audioStream && content == OGGZ_CONTENT_VORBIS) {
         audioCodec = content;
         audioStream = serialno;
@@ -253,9 +253,9 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
         }
         return OGGZ_CONTINUE;
     }
-#endif /* OGVKIT_HAVE_VORBIS_DECODER */
+//#endif /* OGVKIT_HAVE_VORBIS_DECODER */
 
-#ifdef OGVKIT_HAVE_OPUS_DECODER
+//#ifdef OGVKIT_HAVE_OPUS_DECODER
     if (!audioStream && content == OGGZ_CONTENT_OPUS) {
         OpusHeader header;
         if (opus_header_parse(packet.oggPacket->packet, (int)packet.oggPacket->bytes, &header)) {
@@ -281,7 +281,7 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
             [OGVKit.singleton.logger warnWithFormat:@"invalid Opus header, skipping track"];
         }
     }
-#endif
+//#endif
     
     if (!skeletonStream && content == OGGZ_CONTENT_SKELETON) {
         skeletonStream = serialno;
@@ -309,7 +309,7 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
             // fall through to later logic...
         } else {
 
-#ifdef OGVKIT_HAVE_THEORA_DECODER
+//#ifdef OGVKIT_HAVE_THEORA_DECODER
             if (videoCodec == OGGZ_CONTENT_THEORA) {
                 int ret = th_decode_headerin(&theoraInfo, &theoraComment, &theoraSetupInfo, packet.oggPacket);
                 if (ret == 0) {
@@ -337,7 +337,7 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
                     return OGGZ_STOP_ERR;
                 }
             }
-#endif /* OGVKIT_HAVE_THEORA_DECODER */
+//#endif /* OGVKIT_HAVE_THEORA_DECODER */
 
         }
     }
@@ -348,7 +348,7 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
             // fall through to later logic...
         } else {
         
-#ifdef OGVKIT_HAVE_VORBIS_DECODER
+//#ifdef OGVKIT_HAVE_VORBIS_DECODER
             if (audioCodec == OGGZ_CONTENT_VORBIS) {
                 vorbis_processing_headers++;
                 int ret = vorbis_synthesis_headerin(&vi, &vc, packet.oggPacket);
@@ -368,9 +368,9 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
                     return OGGZ_STOP_ERR;
                 }
             }
-#endif /* OGVKIT_HAVE_VORBIS_DECODER */
+//#endif /* OGVKIT_HAVE_VORBIS_DECODER */
 
-#ifdef OGVKIT_HAVE_OPUS_DECODER
+//#ifdef OGVKIT_HAVE_OPUS_DECODER
             if (audioCodec == OGGZ_CONTENT_OPUS) {
                 if (opus_processing_headers == 1) {
                     opus_processing_headers++;
@@ -381,7 +381,7 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
                     [OGVKit.singleton.logger warnWithFormat:@"Unexpected opus header count %d", opus_processing_headers];
                 }
             }
-#endif /* OGVKIT_HAVE_OPUS_DECODER */
+//#endif /* OGVKIT_HAVE_OPUS_DECODER */
             
         }
     }
@@ -415,7 +415,7 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
     }
 }
 
-#ifdef OGVKIT_HAVE_THEORA_DECODER
+//#ifdef OGVKIT_HAVE_THEORA_DECODER
 - (OGVPixelFormat)theoraPixelFormat:(th_pixel_fmt)pixel_fmt
 {
     switch (pixel_fmt) {
@@ -447,7 +447,7 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
             return OGVColorSpaceDefault;
     }
 }
-#endif
+//#endif
 
 -(BOOL)extractDuration
 {
@@ -542,7 +542,7 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
 {
     OGVDecoderOggPacket *packet = [videoPackets dequeue];
 
-#ifdef OGVKIT_HAVE_THEORA_DECODER
+//#ifdef OGVKIT_HAVE_THEORA_DECODER
     if (videoCodec == OGGZ_CONTENT_THEORA) {
         ogg_int64_t videobuf_granulepos = packet.oggzPacket->pos.calc_granulepos;
         float videobuf_time = th_granule_time(theoraDecoderContext, videobuf_granulepos);
@@ -567,7 +567,7 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
             return NO;
         }
     }
-#endif /* OGVKIT_HAVE_THEORA_DECODER */
+//#endif /* OGVKIT_HAVE_THEORA_DECODER */
 
     return NO;
 }
@@ -576,7 +576,7 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
 {
     OGVDecoderOggPacket *packet = [audioPackets dequeue];
 
-#ifdef OGVKIT_HAVE_VORBIS_DECODER
+//#ifdef OGVKIT_HAVE_VORBIS_DECODER
     if (audioCodec == OGGZ_CONTENT_VORBIS) {
         int ret = vorbis_synthesis(&vb, packet.oggPacket);
         if (ret == 0) {
@@ -600,9 +600,9 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
             return NO;
         }
     }
-#endif /* OGVKIT_HAVE_VORBIS_DECODER */
+//#endif /* OGVKIT_HAVE_VORBIS_DECODER */
 
-#ifdef OGVKIT_HAVE_OPUS_DECODER
+//#ifdef OGVKIT_HAVE_OPUS_DECODER
     if (audioCodec == OGGZ_CONTENT_OPUS) {
         int sampleCount = opus_multistream_decode_float(opusDecoder,
                                                         packet.oggPacket->packet,
@@ -635,7 +635,7 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
         }
 
     }
-#endif /* OGVKIT_HAVE_OPUS_DECODER */
+//#endif /* OGVKIT_HAVE_OPUS_DECODER */
 
     return NO;
 }
@@ -711,23 +711,23 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
 
 - (void)dealloc
 {
-#ifdef OGVKIT_HAVE_THEORA_DECODER
+//#ifdef OGVKIT_HAVE_THEORA_DECODER
     if (videoCodec == OGGZ_CONTENT_THEORA) {
         th_decode_free(theoraDecoderContext);
     }
     th_comment_clear(&theoraComment);
     th_info_clear(&theoraInfo);
-#endif
+//#endif
 
-#ifdef OGVKIT_HAVE_VORBIS_DECODER
+//#ifdef OGVKIT_HAVE_VORBIS_DECODER
     if (audioCodec == OGGZ_CONTENT_VORBIS) {
         vorbis_dsp_clear(&vd);
         vorbis_block_clear(&vb);
     }
     vorbis_comment_clear(&vc);
     vorbis_info_clear(&vi);
-#endif
-#ifdef OGVKIT_HAVE_OPUS_DECODER
+//#endif
+//#ifdef OGVKIT_HAVE_OPUS_DECODER
     if (audioCodec == OGGZ_CONTENT_OPUS) {
         if (opusDecoder) {
             opus_multistream_decoder_destroy(opusDecoder);
@@ -739,7 +739,7 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
             free(opusPcmNonInterleaved);
         }
     }
-#endif
+//#endif
     
     oggskel_destroy(skeleton);
 
@@ -755,11 +755,11 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
     if (audioStream) {
         [audioPackets flush];
 
-#ifdef OGVKIT_HAVE_VORBIS_DECODER
+//#ifdef OGVKIT_HAVE_VORBIS_DECODER
         if (audioCodec == OGGZ_CONTENT_VORBIS) {
             vorbis_synthesis_restart(&vd);
         }
-#endif
+//#endif
     }
 }
 
@@ -776,7 +776,7 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
     }
 }
 
-#ifdef OGVKIT_HAVE_THEORA_DECODER
+//#ifdef OGVKIT_HAVE_THEORA_DECODER
 
 - (BOOL)theoraPacketIsKeyframe:(OGVDecoderOggPacket *)packet
 {
@@ -799,12 +799,12 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
     float videobuf_time = th_granule_time(theoraDecoderContext, videobuf_granulepos);
     return videobuf_time;
 }
-#endif
+//#endif
 
 
 - (float)findNextKeyframe
 {
-#ifdef OGVKIT_HAVE_THEORA_DECODER
+//#ifdef OGVKIT_HAVE_THEORA_DECODER
     if (self.hasVideo) {
         while (YES) {
             OGVDecoderOggPacket *packet = [videoPackets match:^BOOL(OGVDecoderOggPacket *pkt) {
@@ -821,13 +821,13 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
             }
         }
     }
-#endif
+//#endif
     return INFINITY;
 }
 
 -(BOOL)seekForwardToKeyframe
 {
-#ifdef OGVKIT_HAVE_THEORA_DECODER
+//#ifdef OGVKIT_HAVE_THEORA_DECODER
     // Discard any video frames prior to the next keyframe...
     if (self.hasVideo) {
         while (YES) {
@@ -851,7 +851,7 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
         }
         return YES;
     }
-#endif
+//#endif
     if (self.hasAudio && self.frameReady) {
         // Discard any audio prior to the keyframe.
         while (self.audioReady && self.audioTimestamp < self.frameTimestamp) {
@@ -911,7 +911,7 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
         return NO;
     }
     
-#ifdef OGVKIT_HAVE_THEORA_DECODER
+//#ifdef OGVKIT_HAVE_THEORA_DECODER
     // For video, oggz_seek_units will usually give us a result between keyframes.
     // This means we have to derive the keyframe time and seek *again*.
     if (self.hasVideo) {
@@ -946,7 +946,7 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
             [self seekForwardToKeyframe];
         }
     }
-#endif
+//#endif
 
     return YES;
 }
@@ -1006,12 +1006,12 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
 
 - (float)frameTimestamp
 {
-#ifdef OGVKIT_HAVE_THEORA_DECODER
+//#ifdef OGVKIT_HAVE_THEORA_DECODER
     OGVDecoderOggPacket *packet = [videoPackets peek];
     if (packet) {
         return [self theoraTimestamp:packet];
     }
-#endif
+//#endif
     return -1;
 }
 
@@ -1059,24 +1059,24 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
             int knownCodecs = 0;
             int unknownCodecs = 0;
             for (NSString *codec in mediaType.codecs) {
-#ifdef OGVKIT_HAVE_THEORA_DECODER
+//#ifdef OGVKIT_HAVE_THEORA_DECODER
                 if ([codec isEqualToString:@"theora"]) {
                     knownCodecs++;
                     continue;
                 }
-#endif
-#ifdef OGVKIT_HAVE_VORBIS_DECODER
+//#endif
+//#ifdef OGVKIT_HAVE_VORBIS_DECODER
                 if ([codec isEqualToString:@"vorbis"]) {
                     knownCodecs++;
                     continue;
                 }
-#endif
-#ifdef OGVKIT_HAVE_OPUS_DECODER
+//#endif
+//#ifdef OGVKIT_HAVE_OPUS_DECODER
                 if ([codec isEqualToString:@"opus"]) {
                     knownCodecs++;
                     continue;
                 }
-#endif
+//#endif
                 unknownCodecs++;
             }
             if (knownCodecs == 0) {

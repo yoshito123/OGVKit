@@ -36,7 +36,7 @@
 }
 
 
-#ifdef OGVKIT_HAVE_VORBIS_DECODER
+//#ifdef OGVKIT_HAVE_VORBIS_DECODER
 - (void)synthesizeOggPacket:(ogg_packet *)dest
 {
     assert(self.count == 1);
@@ -48,7 +48,7 @@
     dest->granulepos = 0; // ?
     dest->packetno = 0; // ?
 }
-#endif
+//#endif
 
 #pragma mark - getters
 

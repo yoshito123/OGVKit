@@ -34,7 +34,7 @@
 
 #import "OGVPlayerView.h"
 
-#ifdef OGVKIT_HAVE_ENCODER
+//#ifdef OGVKIT_HAVE_ENCODER
 #import "OGVPacket.h"
 #import "OGVOutputStream.h"
 #import "OGVFileOutputStream.h"
@@ -42,7 +42,7 @@
 #import "OGVVideoEncoder.h"
 #import "OGVMuxer.h"
 #import "OGVEncoder.h"
-#endif
+//#endif
 
 /**
  * OGVKit utility class.
