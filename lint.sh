@@ -1,1 +1,1 @@
-pod lib lint OGVKit.podspec --sources=https://github.com/brion/OGVKit-Specs.git --use-libraries
+pod lib lint OGVKit.podspec --sources=https://github.com/yoshito123/OGVKit-Specs.git --use-libraries

@@ -7,7 +7,7 @@ use_frameworks!
 source 'https://github.com/CocoaPods/Specs.git'
 
 # temp hack
-source 'https://github.com/brion/OGVKit-Specs.git'
+source 'https://github.com/yoshito123/OGVKit-Specs.git'
 
 # Needed since bitcode cannot be included for assembly portions
 # of the VPX framework, so we don't have complete bitcode for

@@ -10,7 +10,7 @@ Pod::Spec.new do |s|
                    to play a video or audio file from a URL.
                    DESC
 
-  s.homepage     = "https://github.com/brion/OGVKit"
+  s.homepage     = "https://github.com/yoshito123/OGVKit"
 
   s.license      = { :type => "MIT", :file => "LICENSE" }
 
@@ -19,7 +19,7 @@ Pod::Spec.new do |s|
 
   s.platform     = :ios, "8.0"
 
-  s.source       = { :git => "https://github.com/brion/OGVKit.git",
+  s.source       = { :git => "https://github.com/yoshito123/OGVKit.git",
                      :tag => s.version,
                      :submodules => true }
 
