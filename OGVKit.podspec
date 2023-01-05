@@ -127,7 +127,7 @@ Pod::Spec.new do |s|
     swebmdemuxer.private_header_files = "Classes/OGVDecoderWebM.h",
                                         "Classes/OGVDecoderWebMPacket.h"
     swebmdemuxer.dependency 'OGVKit/Core'
-    swebmdemuxer.dependency 'libnestegg', '~>0.2'
+    swebmdemuxer.dependency 'libnestegg', '~>0.4'
   end
 
   # Video decoder module subspecs
