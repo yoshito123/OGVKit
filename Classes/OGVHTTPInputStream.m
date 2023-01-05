@@ -391,7 +391,9 @@ static const NSUInteger kOGVInputStreamBufferSizeReading = 1024 * 1024;
             
             switch (self.state) {
                 case OGVInputStreamStateConnecting:
-                    self.mediaType = [[OGVMediaType alloc] initWithString:response.MIMEType];
+                    // TODO)戻すように
+                    //self.mediaType = [[OGVMediaType alloc] initWithString:response.MIMEType];
+                    self.mediaType = [[OGVMediaType alloc] initWithString:@"video/webm"];
                     
                     switch (statusCode) {
                         case 200: // 'OK' - non-seekable stream

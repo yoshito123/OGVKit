@@ -18,29 +18,49 @@
     return NO;
 }
 
+- (BOOL)videoQueueIsEmpty
+{
+    // TODO) webMのみ対応
+    return NO;
+}
+
 - (BOOL)dequeueAudio
 {
     return NO;
 }
 
-- (BOOL)decodeFrameWithBlock:(void (^)(OGVVideoBuffer *))block
+- (BOOL)audioQueueIsEmpty
 {
+    // TODO) webMのみ対応
     return NO;
 }
 
-- (BOOL)decodeAudioWithBlock:(void (^)(OGVAudioBuffer *))block
+- (BOOL)decodeFrameWithBlock:(BOOL)isMakeBuffer :(void (^)(OGVVideoBuffer *))block
 {
+    // TODO) isMakeBufferの処理はwebMのみ対応
     return NO;
 }
 
-- (BOOL)process
+- (BOOL)decodeAudioWithBlock:(BOOL)isMakeBuffer :(void (^)(OGVAudioBuffer *))block
 {
+    // TODO) isMakeBufferの処理はwebMのみ対応
     return NO;
+}
+
+// TODO)webMだけ終端パケットに対応
+- (eProcessState)process
+{
+    return eProcessState_Error;
 }
 
 - (BOOL)seek:(float)seconds
+ cancelQueue:(SeekCancelQueue*)cancelQueue
 {
     return NO;
+}
+
+- (void)flush
+{
 }
 
 - (float)findNextKeyframe

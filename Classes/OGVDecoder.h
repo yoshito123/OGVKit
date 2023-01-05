@@ -7,6 +7,16 @@
 //
 
 @class OGVDecoder;
+@class SeekCancelQueue;
+
+
+// 表示モード
+typedef NS_ENUM (NSUInteger, eProcessState) {
+    eProcessState_Error = 0,
+    eProcessState_Success,
+    eProcessState_EndPacket,
+};
+
 
 @protocol OGVDecoder <NSObject>
 + (instancetype)alloc;
@@ -43,12 +53,16 @@
 
 @property OGVInputStream *inputStream;
 
-- (BOOL)process;
+- (eProcessState)process;
 - (BOOL)dequeueFrame;
+- (BOOL)videoQueueIsEmpty;
 - (BOOL)dequeueAudio;
-- (BOOL)decodeFrameWithBlock:(void (^)(OGVVideoBuffer *frameBuffer))block;
-- (BOOL)decodeAudioWithBlock:(void (^)(OGVAudioBuffer *audioBuffer))block;
-- (BOOL)seek:(float)seconds;
+- (BOOL)audioQueueIsEmpty;
+- (BOOL)decodeFrameWithBlock:(BOOL)isMakeBuffer :(void (^)(OGVVideoBuffer *))block;
+- (BOOL)decodeAudioWithBlock:(BOOL)isMakeBuffer :(void (^)(OGVAudioBuffer *audioBuffer))block;
+- (BOOL)seek:(float)seconds
+ cancelQueue:(SeekCancelQueue*)cancelQueue;
+- (void)flush;
 - (float)findNextKeyframe;
 
 + (BOOL)canPlayType:(OGVMediaType *)mediaType;

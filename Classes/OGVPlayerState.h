@@ -32,29 +32,56 @@
 -(void)ogvPlayerStateDidEnd:(OGVPlayerState *)state;
 
 @optional
--(void)ogvPlayerStateDidSeek:(OGVPlayerState *)state;
-
-@optional
 -(void)ogvPlayerState:(OGVPlayerState *)state customizeURLRequest:(NSMutableURLRequest *)request;
 
 @end
 
 
-@interface OGVPlayerState : NSObject <OGVInputStreamDelegate>
+@interface SeekQueueItem : NSObject
+{
+}
+
+@property (nonatomic) float time;
+@property (nonatomic,strong) void(^completionHandler)(BOOL);
+-(instancetype)init:(float)time
+  completionHandler:(void (^)(BOOL))completionHandler;
+@end
+
+@interface SeekCancelQueue : NSObject
+{
+    
+}
+
+@property (nonatomic,strong) OGVQueue* queue;
+@property (nonatomic,strong) NSObject* queueLock;
+
+-(void)addQueue:(SeekQueueItem*)value;
+-(SeekQueueItem*)lastPop;
+-(BOOL)isCancel:(void (^)(void))cancelAction;
+
+@end
+
+
+@interface OGVPlayerState : NSObject <OGVInputStreamDelegate,OGVAudioFeederDelegate>
 
 -(instancetype)initWithInputStream:(OGVInputStream *)inputStream
+                         startTime:(float)startTime
                           delegate:(id<OGVPlayerStateDelegate>)delegate;
 
 -(instancetype)initWithInputStream:(OGVInputStream *)inputStream
+                         startTime:(float)startTime
                           delegate:(id<OGVPlayerStateDelegate>)delegate
                      delegateQueue:(dispatch_queue_t)delegateQueue;
 
--(instancetype)initWithURL:(NSURL *)URL delegate:(id<OGVPlayerStateDelegate>)delegate;
+-(instancetype)initWithURL:(NSURL *)URL
+                 startTime:(float)startTime
+                  delegate:(id<OGVPlayerStateDelegate>)delegate;
 
--(void)play;
+-(void)play:(BOOL)isSeekAfter;
 -(void)pause;
 -(void)cancel;
--(void)seek:(float)time;
+-(void)seek:(float)time completionHandler:(void (^)(BOOL))completionHandler;
+-(void)changePlayRate:(float)rate;
 
 @property (readonly) BOOL paused;
 @property (readonly) float playbackPosition;

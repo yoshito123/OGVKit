@@ -12,8 +12,86 @@
 #import "OGVFileInputStream.h"
 #import "OGVHTTPInputStream.h"
 
+// 表示モード
+typedef NS_ENUM (NSUInteger, ePlayState) {
+    ePlayState_Stop = 0,// 完全停止
+    ePlayState_Pause,// 一時停止
+    ePlayState_Play, // 再生中
+};
+
 @interface OGVPlayerState ()
 @property (readonly) float baseTime;
+@end
+
+@implementation SeekQueueItem
+
+-(instancetype)init:(float)time
+  completionHandler:(void (^)(BOOL))completionHandler
+{
+    self = [super init];
+    if (self) {
+        self.time = time;
+        self.completionHandler = completionHandler;
+    }
+    return self;
+}
+@end
+
+@implementation SeekCancelQueue
+
+-(instancetype)init
+{
+    self = [super init];
+    if (self) {
+        self.queue = [[OGVQueue alloc] init];
+        self.queueLock = [[NSObject alloc] init];
+    }
+    return self;
+}
+
+-(void)addQueue:(SeekQueueItem*)value
+{
+    @synchronized (self.queueLock) {
+        //NSLog(@"debug print seekInfo add queue [%f][%@]",time,[NSThread currentThread]);
+        [self.queue queue:value];
+    }
+}
+
+
+-(SeekQueueItem*)lastPop
+{
+    SeekQueueItem* result = nil;
+    @synchronized (self.queueLock) {
+        while(![self.queue empty]){
+            result = [self.queue dequeue];
+            if([self.queue empty]){
+                break;
+            }
+            else{
+                if(result.completionHandler != nil){
+                    // 最後のシークを処理するので途中はキャンセル
+                    result.completionHandler(NO);
+                }
+            }
+        }
+    }
+    return result;
+}
+
+-(BOOL)isCancel:(void (^)(void))cancelAction
+{
+    BOOL result = NO;
+    @synchronized (self.queueLock) {
+        if(![self.queue empty]){
+            if(cancelAction != nil){
+                cancelAction();
+            }
+            result = YES;
+        }
+    }
+    return result;
+}
+
 @end
 
 @implementation OGVPlayerState
@@ -30,10 +108,15 @@
     CFTimeInterval initTime; // [self baseTime] at the beginning of timeline counting
     CFTimeInterval offsetTime; // offset from initTime to 'live' time at the beginning of timeline counting
 
-    BOOL playing;
+    ePlayState playState;
     BOOL playAfterLoad;
     BOOL seeking;
     BOOL ended;
+    float playRate;
+    
+    SeekCancelQueue* seekChancelQueue;
+    BOOL isSeekStart;
+    ePlayState beforePlayState;  // シーク開始時の再生状態
     
     dispatch_queue_t decodeQueue;
     dispatch_queue_t delegateQueue;
@@ -42,21 +125,26 @@
 #pragma mark - Public methods
 
 -(instancetype)initWithURL:(NSURL *)URL
+                 startTime:(float)startTime
                   delegate:(id<OGVPlayerStateDelegate>)aDelegate
 {
     return [self initWithInputStream:[OGVInputStream inputStreamWithURL:URL]
+                           startTime:startTime
                             delegate:aDelegate];
 }
 
 -(instancetype)initWithInputStream:(OGVInputStream *)inputStream
+                         startTime:(float)startTime
                           delegate:(id<OGVPlayerStateDelegate>)aDelegate
 {
     return [self initWithInputStream:inputStream
+                           startTime:startTime
                             delegate:aDelegate
                        delegateQueue:dispatch_get_main_queue()];
 }
 
 -(instancetype)initWithInputStream:(OGVInputStream *)inputStream
+                         startTime:(float)startTime
                           delegate:(id<OGVPlayerStateDelegate>)aDelegate
                      delegateQueue:(dispatch_queue_t)aDelegateQueue
 {
@@ -72,13 +160,17 @@
 
         stream = inputStream;
         initTime = 0;
-        offsetTime = 0;
-        playing = NO;
+        playState = ePlayState_Stop;
         seeking = NO;
         playAfterLoad = NO;
-
-        frameEndTimestamp = 0;
-        audioPausePosition = 0;
+        playRate = 1.0;
+        
+        offsetTime = startTime;
+        frameEndTimestamp = startTime;
+        audioPausePosition = startTime;
+        
+        seekChancelQueue = [[SeekCancelQueue alloc] init];
+        isSeekStart = NO;
 
         // Start loading the URL and processing header data
         dispatch_async(decodeQueue, ^() {
@@ -90,15 +182,21 @@
     return self;
 }
 
--(void)play
+-(void)play:(BOOL)isSeekAfter
 {
     dispatch_async(decodeQueue, ^() {
-        if (self->playing) {
+        NSLog(@"debug print pause play");
+        if (isSeekAfter && self->playState == ePlayState_Pause){
+            // シーク中にPauseするとpauseが呼び出された後にplayが呼び出されるので
+            // pauseになっていたら再生しない
+            NSLog(@"debug print pause play isPause");
+        } else if (self->playState == ePlayState_Play) {
             // Already playing
         } else if (self->ended) {
-            self->ended = NO;
-            self->playing = YES;
-            [self seek:0.0f];
+            // 何もしない
+            //self->ended = NO;
+            //self->playing = YES;
+            //[self seek:0.0f completionHandler:nil];
         } else if (self->decoder.dataReady) {
             [self startPlayback:self->decoder.hasAudio ? self->audioPausePosition : self->frameEndTimestamp];
         } else {
@@ -110,6 +208,28 @@
 -(void)pause
 {
     dispatch_async(decodeQueue, ^() {
+        
+        NSLog(@"debug print pause action");
+        self->playAfterLoad = NO;
+        
+        if (self->audioFeeder) {
+            [self pauseAudio];
+        }
+
+        if (self->playState == ePlayState_Play) {
+            self->playState = ePlayState_Pause;
+            [self callDelegateSelector:@selector(ogvPlayerStateDidPause:) sync:NO withBlock:^() {
+                [self->delegate ogvPlayerStateDidPause:self];
+            }];
+        } else {
+            self->playState = ePlayState_Pause;
+        }
+    });
+}
+
+-(void)stop
+{
+    dispatch_async(decodeQueue, ^() {
         float newBaseTime = self.baseTime;
         self->offsetTime = self.playbackPosition;
         self->initTime = newBaseTime;
@@ -117,18 +237,20 @@
             [self stopAudio];
         }
 
-        if (self->playing) {
-            self->playing = NO;
+        if (self->playState == ePlayState_Play) {
+            self->playState = ePlayState_Stop;
             [self callDelegateSelector:@selector(ogvPlayerStateDidPause:) sync:NO withBlock:^() {
                 [self->delegate ogvPlayerStateDidPause:self];
             }];
+        } else {
+            self->playState = ePlayState_Stop;
         }
     });
 }
 
 -(void)cancel
 {
-    [self pause];
+    [self stop];
 
     dispatch_async(decodeQueue, ^() {
         if (self->stream) {
@@ -139,61 +261,110 @@
     });
 }
 
--(void)seek:(float)time
+-(void)seek:(float)time completionHandler:(void (^)(BOOL))completionHandler
 {
     ended = NO;
-    if (seeking) {
-        // this feels very hacky!
-        [decoder.inputStream cancel];
-        [decoder.inputStream restart];
-    }
+    
+    [seekChancelQueue addQueue:[[SeekQueueItem alloc] init:time completionHandler:completionHandler]];
+    
+//    if (seeking) {
+//        // this feels very hacky!
+//        [decoder.inputStream cancel];
+//        [decoder.inputStream restart];
+//    }
     dispatch_async(decodeQueue, ^() {
-        if (self->decoder && self->decoder.seekable) {
-            BOOL wasPlaying = !self.paused;
-            if (wasPlaying) {
-                [self pause];
-            }
-            dispatch_async(self->decodeQueue, ^() {
-                BOOL ok = [self->decoder seek:time];
-
-                if (ok) {
-                    // Adjust the offset for the seek
-                    self->offsetTime = time;
-                    self->initTime = self.baseTime;
-
-                    // Find out the actual time we seeked to!
-                    // We may have gone to a keyframe nearby.
-                    [self syncAfterSeek:time exact:YES];
-                    if (self->decoder.frameReady) {
-                        self->frameEndTimestamp = self->decoder.frameTimestamp;
-                        self->offsetTime = self->frameEndTimestamp;
-                    } else {
-                        // probably at end?
-                        self->frameEndTimestamp = time;
-                    }
-                    if (self->decoder.audioReady) {
-                        self->audioPausePosition = self->decoder.audioTimestamp;
-                        self->offsetTime = self->audioPausePosition;
-                    } else {
-                        // probably at end?
-                        self->audioPausePosition = time;
-                    }
-
-                    [self callDelegateSelector:@selector(ogvPlayerStateDidSeek:) sync:NO withBlock:^() {
-                        [self->delegate ogvPlayerStateDidSeek:self];
-                    }];
-                    if (wasPlaying) {
-                        [self play];
-                    } else if (self->decoder.hasVideo) {
-                        // Show where we left off
-                        [self->decoder decodeFrameWithBlock:^(OGVVideoBuffer *frameBuffer) {
-                            [self drawFrame:frameBuffer];
-                        }];
-                    }
-                }
-            });
+        SeekQueueItem* item = [self->seekChancelQueue lastPop];
+        if(item == nil){
+            return;
         }
+        
+        if (self->decoder && self->decoder.seekable) {
+            
+            if(!self->isSeekStart){
+                self->isSeekStart = YES;
+                self->beforePlayState = self->playState;
+                if(self->playState == ePlayState_Play || self->playState == ePlayState_Pause){
+                    [self stop];
+                }
+            }
+            BOOL ok = [self->decoder seek:item.time
+                              cancelQueue:self->seekChancelQueue];
+            
+            if([self->seekChancelQueue isCancel:^() {
+                NSLog(@"debug print seekInfo skip seek1");
+                item.completionHandler(NO);
+            }]){
+                return;
+            }
+
+            if (ok) {
+                // Adjust the offset for the seek
+                self->offsetTime = item.time;
+                self->initTime = self.baseTime;
+
+                // Find out the actual time we seeked to!
+                // We may have gone to a keyframe nearby.
+                [self syncAfterSeek:item.time exact:YES];
+                
+                if([self->seekChancelQueue isCancel:^() {
+                    NSLog(@"debug print seekInfo skip seek2");
+                    item.completionHandler(NO);
+                }]){
+                    return;
+                }
+                
+                if (self->decoder.frameReady) {
+                    self->frameEndTimestamp = self->decoder.frameTimestamp;
+                    self->offsetTime = self->frameEndTimestamp;
+                } else {
+                    // probably at end?
+                    self->frameEndTimestamp = item.time;
+                }
+                if (self->decoder.audioReady) {
+                    self->audioPausePosition = self->decoder.audioTimestamp;
+                    self->offsetTime = self->audioPausePosition;
+                } else {
+                    // probably at end?
+                    self->audioPausePosition = item.time;
+                }
+                
+                if(item.completionHandler != nil){
+                    item.completionHandler(YES);
+                }
+                
+                if (self->decoder.hasVideo) {
+                    // Show where we left off
+                    [self->decoder decodeFrameWithBlock:YES :^(OGVVideoBuffer *frameBuffer) {
+                        [self drawFrame:frameBuffer];
+                        [frameBuffer neuter];
+                    }];
+                }
+                NSLog(@"debug print pause seek end");
+                if (self->beforePlayState == ePlayState_Play) {
+                    [self play:YES];
+                }
+            } else {
+                if(item.completionHandler != nil){
+                    item.completionHandler(NO);
+                }
+            }
+        } else {
+            if(item.completionHandler != nil){
+                item.completionHandler(NO);
+            }
+        }
+        
+        self->isSeekStart = NO;
     });
+}
+
+
+- (void)changePlayRate:(float)rate
+{
+    playRate = rate;
+    if (audioFeeder) {
+        [audioFeeder changePlayRate:rate];
+    }
 }
 
 
@@ -201,14 +372,20 @@
 
 -(BOOL)paused
 {
-    return !playing;
+    return playState != ePlayState_Play;
 }
 
 -(float)playbackPosition
 {
+    NSLog(@"debug print playbackPosition1 playState [%@] baseTime [%f] initTime [%f] offsetTime [%f]"
+          ,(playState == ePlayState_Play ? @"play" : (playState == ePlayState_Stop ? @"stop" : @"pause"))
+          ,self.baseTime
+          ,initTime
+          ,offsetTime);
+        
     double position = 0.0;
-    if (playing) {
-        position = self.baseTime - initTime + offsetTime;
+    if (playState != ePlayState_Stop) {
+        position = (self.baseTime - initTime) + offsetTime;
     } else {
         position = offsetTime;
     }
@@ -218,8 +395,17 @@
 
 - (float)baseTime
 {
-    if (decoder.hasAudio && audioFeeder) {
-        return audioFeeder.playbackPosition;
+    NSLog(@"debug print playbackPosition2 hasAudio [%@] audioFeeder [%@] audioFeeder.playbackPosition [%f]"
+          ,(decoder.hasAudio ? @"true" : @"false")
+          ,(audioFeeder ? @"true" : @"false")
+          ,audioFeeder.playbackPosition);
+    
+    if (decoder.hasAudio) {
+        if(audioFeeder){
+            return audioFeeder.playbackPosition;
+        } else {
+            return 0.0;
+        }
     } else {
         return CACurrentMediaTime();
     }
@@ -278,18 +464,29 @@
 {
     assert(decoder.dataReady);
     assert(offset >= 0);
+    
+    if(playState == ePlayState_Pause){
+        // pause解除
+        playState = ePlayState_Play;
+        
+        if (decoder.hasAudio) {
+            if(audioFeeder){
+                [audioFeeder pauseOff];
+            }
+        }
+    } else {
+        playState = ePlayState_Play;
+        
+        [self initPlaybackState:offset];
 
-    playing = YES;
+        if (decoder.hasAudio) {
+            [self startAudio:offset];
+        }
 
-    [self initPlaybackState:offset];
-
-    if (decoder.hasAudio) {
-        [self startAudio:offset];
+        [self callDelegateSelector:@selector(ogvPlayerStateDidPlay:) sync:NO withBlock:^() {
+            [self->delegate ogvPlayerStateDidPlay:self];
+        }];
     }
-
-    [self callDelegateSelector:@selector(ogvPlayerStateDidPlay:) sync:NO withBlock:^() {
-        [self->delegate ogvPlayerStateDidPlay:self];
-    }];
     [self pingProcessing:0];
 }
 
@@ -308,11 +505,21 @@
     assert(decoder.hasAudio);
     assert(!audioFeeder);
 
-    audioFeeder = [[OGVAudioFeeder alloc] initWithFormat:decoder.audioFormat];
+    audioFeeder = [[OGVAudioFeeder alloc] initWithFormat:decoder.audioFormat
+                                                delegate:self];
+    [audioFeeder changePlayRate:playRate];
 
     // Reset to audio clock
     initTime = self.baseTime;
     offsetTime = offset;
+}
+
+-(void)pauseAudio
+{
+    assert(decoder.hasAudio);
+    assert(audioFeeder);
+    
+    [audioFeeder pause];
 }
 
 -(void)stopAudio
@@ -323,7 +530,6 @@
     // Save the actual audio time as last offset
     audioPausePosition = [audioFeeder bufferTailPosition] - initTime + offsetTime;
 
-    // @fixme let the already-queued audio play out when pausing?
     [audioFeeder close];
     audioFeeder = nil;
 
@@ -332,18 +538,34 @@
     offsetTime = audioPausePosition;
 }
 
+
+
 - (void)processHeaders
 {
-    BOOL ok = [decoder process];
-    if (ok) {
+    eProcessState processState = [decoder process];
+    if (processState == eProcessState_Success) {
         if (decoder.dataReady) {
-            [self callDelegateSelector:@selector(ogvPlayerStateDidLoadMetadata:) sync:NO withBlock:^() {
-                [self->delegate ogvPlayerStateDidLoadMetadata:self];
-            }];
-            if (playAfterLoad) {
-                playAfterLoad = NO;
-                [self startPlayback:0];
+            float seekTime = self->decoder.hasAudio ? self->audioPausePosition : self->frameEndTimestamp;
+                        
+            void(^afterFunc)(void) = ^() {
+                [self callDelegateSelector:@selector(ogvPlayerStateDidLoadMetadata:) sync:NO withBlock:^() {
+                    [self->delegate ogvPlayerStateDidLoadMetadata:self];
+                }];
+                if (self->playAfterLoad) {
+                    self->playAfterLoad = NO;
+                    [self startPlayback:seekTime];
+                }
+            };
+            
+            if(seekTime > 0.0){
+                // 初回シーク
+                [self seek:seekTime completionHandler:^(BOOL success) {
+                    afterFunc();
+                }];
+            } else {
+                afterFunc();
             }
+            
         } else {
             dispatch_async(decodeQueue, ^() {
                 [self processHeaders];
@@ -356,17 +578,17 @@
 
 - (void)processNextFrame
 {
-    BOOL more;
-    if (!playing) {
+    eProcessState more;
+    if (playState != ePlayState_Play) {
         return;
     }
     while (true) {
         more = [decoder process];
-        if (!more) {
+        if (more != eProcessState_Success) {
             if (decoder.inputStream.state == OGVInputStreamStateFailed) {
                 [OGVKit.singleton.logger errorWithFormat:@"Hey! The input stream failed. Handle this more gracefully."];
-                [self pause];
-                playing = NO;
+                [self stop];
+                playState = ePlayState_Stop;
                 return;
             }
             
@@ -386,7 +608,7 @@
                 if (timeLeft > 0) {
                     [self pingProcessing:timeLeft];
                 } else {
-                    [self pause];
+                    [self stop];
                     ended = YES;
                     [self callDelegateSelector:@selector(ogvPlayerStateDidEnd:) sync:NO withBlock:^() {
                         [self->delegate ogvPlayerStateDidEnd:self];
@@ -436,9 +658,17 @@
                 
                 float audioBufferedDuration = [audioFeeder secondsQueued];
                 BOOL readyForAudio = (audioBufferedDuration <= bufferDuration);
-
+                
+                NSLog(@"debug print processNextFrame1 readyForAudio %@ audioBufferedDuration %f bufferDuration %f"
+                      ,readyForAudio ? @"true" : @"false"
+                      ,audioBufferedDuration
+                      ,bufferDuration);
+                NSLog(@"debug print processNextFrame2 audioTimestamp %f playbackPosition %f"
+                      ,decoder.audioTimestamp
+                      ,playbackPosition);
+                
                 if (readyForAudio) {
-                    BOOL ok = [decoder decodeAudioWithBlock:^(OGVAudioBuffer *audioBuffer) {
+                    BOOL ok = [decoder decodeAudioWithBlock:YES :^(OGVAudioBuffer *audioBuffer) {
                         if (![self->audioFeeder bufferData:audioBuffer]) {
                             if ([self->audioFeeder isClosed]) {
                                 // Audio died, perhaps due to starvation during slow decodes
@@ -476,10 +706,11 @@
         if (decoder.hasVideo) {
             if (decoder.frameReady) {
                 if (readyToDecodeFrame) {
-                    BOOL ok = [decoder decodeFrameWithBlock:^(OGVVideoBuffer *frameBuffer) {
+                    BOOL ok = [decoder decodeFrameWithBlock:YES :^(OGVVideoBuffer *frameBuffer) {
                         // Check if it's time to draw (AKA the frame timestamp is at or past the playhead)
                         // If we're already playing, DRAW!
                         [self drawFrame:frameBuffer];
+                        [frameBuffer neuter];
                     }];
                     if (ok) {
                         // End the processing loop, we'll ping again after drawing
@@ -490,7 +721,7 @@
                     }
                 }
                 nextDelay = fminf(nextDelay, fmaxf(frameEndTimestamp - playbackPosition, 0.0f));
-            } else if (!playing) {
+            } else if (playState != ePlayState_Play) {
                 // We're all caught up but paused, will be pinged when played
                 return;
             } else {
@@ -498,6 +729,11 @@
                 continue;
             }
         }
+        
+        NSLog(@"debug print processNextFrame playbackPosition %f delay %f frameEndTimestamp %f"
+              ,playbackPosition
+              ,nextDelay
+              ,frameEndTimestamp);
 
         if (nextDelay < INFINITY) {
             [self pingProcessing:nextDelay];
@@ -537,30 +773,91 @@
 
 -(BOOL)syncAfterSeek:(float)target exact:(BOOL)exact
 {
+    __block OGVVideoBuffer *lastFrameBuffer = nil;
+    
+    void(^releaseFrame)(void) = ^() {
+        if(lastFrameBuffer){
+            [lastFrameBuffer neuter];
+            lastFrameBuffer = nil;
+        }
+    };
+        
     while (YES) {
+        
+        NSLog(@"debug print syncAfterSeek before audioReady %@ frameReady %@ frameTimestamp %f audioTimestamp %f"
+              ,(decoder.audioReady ? @"true" : @"false")
+              ,(decoder.frameReady ? @"true" : @"false")
+              ,decoder.frameTimestamp
+              ,decoder.audioTimestamp);
+        
+        if([self->seekChancelQueue isCancel:nil]){
+            NSLog(@"debug print seekInfo skip seek3");
+            return NO;
+        }
+        eProcessState processState = eProcessState_Success;
         while ((decoder.hasAudio && !decoder.audioReady) || (decoder.hasVideo && !decoder.frameReady)) {
-            if (![decoder process]) {
+            processState = [decoder process];
+            if(processState == eProcessState_Error){
                 [OGVKit.singleton.logger errorWithFormat:@"Got to end of file before found data again after seek."];
+                releaseFrame();
                 return NO;
+            } else if(processState == eProcessState_EndPacket){
+                // 終端まで操作した
+                if(lastFrameBuffer){
+                    // 最後のフレームを表示する
+                    [self drawFrame:lastFrameBuffer];
+                }
+                
+                [self stop];
+                ended = YES;
+                [self callDelegateSelector:@selector(ogvPlayerStateDidEnd:) sync:NO withBlock:^() {
+                    [self->delegate ogvPlayerStateDidEnd:self];
+                }];
+                
+                releaseFrame();
+                return YES;
             }
         }
+        
+        
+        if([self->seekChancelQueue isCancel:nil]){
+            NSLog(@"debug print seekInfo skip seek3");
+            return NO;
+        }
+        
+        NSLog(@"debug print syncAfterSeek after audioReady %@ frameReady %@ frameTimestamp %f audioTimestamp %f"
+              ,(decoder.audioReady ? @"true" : @"false")
+              ,(decoder.frameReady ? @"true" : @"false")
+              ,decoder.frameTimestamp
+              ,decoder.audioTimestamp);
+        
         if (exact) {
-            if (decoder.hasAudio && decoder.audioReady && decoder.audioTimestamp < target) {
-                [decoder decodeAudioWithBlock:^(OGVAudioBuffer *audioBuffer) {
-                    // no-op
+            while (decoder.hasAudio && decoder.audioReady && decoder.audioTimestamp < target && ![decoder audioQueueIsEmpty]) {
+                [decoder decodeAudioWithBlock:NO :^(OGVAudioBuffer *audioBuffer) {
+                    
                 }];
             }
-            if (decoder.hasVideo && decoder.frameReady && decoder.frameTimestamp < target) {
-                [decoder decodeFrameWithBlock:^(OGVVideoBuffer *frameBuffer) {
-                    // no-op
+            while (decoder.hasVideo && decoder.frameReady && decoder.frameTimestamp < target && ![decoder videoQueueIsEmpty]) {
+                // 対象時間に近づいたら画像の生成をする
+                BOOL isMakeBuffer = (decoder.frameTimestamp >= target - 0.2);
+                [decoder decodeFrameWithBlock:isMakeBuffer :^(OGVVideoBuffer *frameBuffer) {
+                    
+                    if(isMakeBuffer){
+                        releaseFrame();
+                        // 終端到達時の表示バッファ
+                        lastFrameBuffer = frameBuffer;
+                    }
                 }];
             }
             if ((!decoder.hasVideo || decoder.frameTimestamp >= target) &&
                 (!decoder.hasAudio || decoder.audioTimestamp >= target)) {
+                
+                releaseFrame();
                 return YES;
             }
         } else {
             // We're ok leaving off after the keyframe
+            releaseFrame();
             return YES;
         }
     }
@@ -605,6 +902,16 @@
     [self callDelegateSelector:@selector(ogvPlayerState:customizeURLRequest:) sync:YES withBlock:^() {
         [self->delegate ogvPlayerState:self customizeURLRequest:request];
     }];
+}
+
+#pragma mark - OGVAudioFeederDelegate methods
+-(void)ogvAudioFeederStartUP
+{
+    NSLog(@"debug print pause ogvAudioFeederStartUP1");
+    if(playState == ePlayState_Play && audioFeeder && ![audioFeeder isClosed]){
+        NSLog(@"debug print pause ogvAudioFeederStartUP2");
+        [audioFeeder startRun];
+    }
 }
 
 @end

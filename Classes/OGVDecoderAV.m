@@ -66,7 +66,7 @@
     return (buffer != nil);
 }
 
--(BOOL)decodeFrameWithBlock:(void (^)(OGVVideoBuffer *))block
+- (BOOL)decodeFrameWithBlock:(BOOL)isMakeBuffer :(void (^)(OGVVideoBuffer *))block
 {
     if ([frameBuffers peek]) {
         block([frameBuffers dequeue]);
@@ -76,7 +76,7 @@
     }
 }
 
--(BOOL)decodeAudioWithBlock:(void (^)(OGVAudioBuffer *))block
+-(BOOL)decodeAudioWithBlock:(BOOL)isMakeBuffer :(void (^)(OGVAudioBuffer *))block
 {
     if ([audioBuffers peek]) {
         block([audioBuffers dequeue]);
@@ -86,7 +86,7 @@
     }
 }
 
--(BOOL)process
+-(eProcessState)process
 {
     if (!asset) {
         // @fixme this will fail for non-URL input stream types
@@ -113,7 +113,7 @@
         if (!assetReader) {
             [OGVKit.singleton.logger errorWithFormat:@"failed to init AVAssetReader: %@", err];
             asset = nil;
-            return NO;
+            return eProcessState_Error;
         }
 
         if (startTime > 0) {
@@ -165,7 +165,7 @@
         }
 
         self.dataReady = YES;
-        return YES;
+        return eProcessState_Success;
     }
     
     if (![frameBuffers peek]) {
@@ -177,11 +177,11 @@
 
     if (![frameBuffers peek] && ![audioBuffers peek]) {
         // eof?
-        return NO;
+        return eProcessState_Error;
     }
     
     //return YES;
-    return NO; // will block
+    return eProcessState_Error; // will block
 }
 
 -(void)dealloc
@@ -195,6 +195,7 @@
 }
 
 - (BOOL)seek:(float)seconds
+ cancelQueue:(SeekCancelQueue*)cancelQueue
 {
     startTime = seconds;
 

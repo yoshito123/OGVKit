@@ -393,11 +393,17 @@ static int64_t tellCallback(void * userdata)
     // at which point we ask for more. Hope it doesn't explode.
     nestegg_packet *nepacket = NULL;
     int ret = nestegg_read_packet(demuxContext, &nepacket);
+        
     if (ret == 0) {
         // end of stream?
         return NO;
     } else if (ret > 0) {
-        [self _queue:[[OGVDecoderWebMPacket alloc] initWithNesteggPacket:nepacket]];
+        OGVDecoderWebMPacket* packet = [[OGVDecoderWebMPacket alloc] initWithNesteggPacket:nepacket];
+        NSLog(@"debug print processNextPacket packet isKeyFrame [%@] timestamp [%f]"
+              ,packet.isKeyFrame ? @"true" : @"false"
+              ,packet.timestamp);
+        [packet offset];
+        [self _queue:packet];
     }
     return YES;
 }
@@ -406,7 +412,25 @@ static int64_t tellCallback(void * userdata)
 {
     unsigned int track;
     nestegg_packet_track(packet.nesteggPacket, &track);
+    
+    NSLog(@"debug print _queue [%@] timestamp %f"
+          ,(track == videoTrack ? @"videoTrack" : (track == audioTrack ? @"audioTrack" : @"badTrack"))
+          ,packet.timestamp);
 
+//    long long start_pos;
+//    long long end_pos;
+//    unsigned long long tstamp;
+//
+//    int result = nestegg_get_cue_point(demuxContext, 0,
+//                                       -1, &start_pos,
+//                                       &end_pos, &tstamp);
+//
+//    if(result >= 0){
+//        NSLog(@"debug print _queue [%@] timestamp %f"
+//              ,(track == videoTrack ? @"videoTrack" : (track == audioTrack ? @"audioTrack" : @"badTrack"))
+//              ,packet.timestamp);
+//    }
+    
     if (self.hasVideo && track == videoTrack) {
         [videoPackets queue:packet];
     } else if (self.hasAudio && track == audioTrack) {
@@ -421,12 +445,22 @@ static int64_t tellCallback(void * userdata)
     return nil != [videoPackets dequeue];
 }
 
+- (BOOL)videoQueueIsEmpty
+{
+    return [videoPackets empty];
+}
+
 - (BOOL)dequeueAudio
 {
     return nil != [audioPackets dequeue];
 }
 
--(BOOL)decodeFrameWithBlock:(void (^)(OGVVideoBuffer *))block
+- (BOOL)audioQueueIsEmpty
+{
+    return [audioPackets empty];
+}
+
+-(BOOL)decodeFrameWithBlock:(BOOL)isMakeBuffer :(void (^)(OGVVideoBuffer *))block
 {
     OGVDecoderWebMPacket *packet = [videoPackets dequeue];
     
@@ -434,6 +468,7 @@ static int64_t tellCallback(void * userdata)
         unsigned int chunks = packet.count;
 
         videobufTime = packet.timestamp;
+        NSLog(@"debug print decodeFrameWithBlock timestamp %f",videobufTime);
 
 //#ifdef OGVKIT_HAVE_VP8_DECODER
         // uh, can this happen? curiouser :D
@@ -458,6 +493,10 @@ static int64_t tellCallback(void * userdata)
             }
             foundImage = true;
 
+            // 画像の生成スキップ
+            if(!isMakeBuffer){
+                return YES;
+            }
             // In VP8/VP9 the frame size can vary! Update as necessary.
             // vpx_image is pre-cropped; use only the display size
             OGVVideoFormat *format = [[OGVVideoFormat alloc] initWithFrameWidth:image->d_w
@@ -480,7 +519,8 @@ static int64_t tellCallback(void * userdata)
                                                                          CrStride:image->stride[2]
                                                                         timestamp:videobufTime];
             block(frame);
-            [frame neuter];
+            // 使用元で破棄するよう変更
+            //[frame neuter];
             
             return YES;
         }
@@ -529,14 +569,16 @@ static int64_t tellCallback(void * userdata)
     }
 }
 
--(BOOL)decodeAudioWithBlock:(void (^)(OGVAudioBuffer *))block
+-(BOOL)decodeAudioWithBlock:(BOOL)isMakeBuffer :(void (^)(OGVAudioBuffer *))block
 {
     BOOL foundSome = NO;
     
     OGVDecoderWebMPacket *packet = [audioPackets dequeue];
 
     if (packet) {
-
+        
+        NSLog(@"debug print decodeAudioWithBlock timestamp %f [%@]",packet.timestamp, [NSThread currentThread]);
+        
 //#ifdef OGVKIT_HAVE_VORBIS_DECODER
         if (audioCodec == NESTEGG_CODEC_VORBIS) {
             ogg_packet audioPacket;
@@ -550,7 +592,9 @@ static int64_t tellCallback(void * userdata)
                 int sampleCount = vorbis_synthesis_pcmout(&vorbisDspState, &pcm);
                 if (sampleCount > 0) {
                     foundSome = YES;
-                    block([[OGVAudioBuffer alloc] initWithPCM:pcm samples:sampleCount format:self.audioFormat timestamp:packet.timestamp]);
+                    if(isMakeBuffer){
+                        block([[OGVAudioBuffer alloc] initWithPCM:pcm samples:sampleCount format:self.audioFormat timestamp:packet.timestamp]);
+                    }
                     
                     vorbis_synthesis_read(&vorbisDspState, sampleCount);
                     if (audiobufGranulepos != -1) {
@@ -601,16 +645,17 @@ static int64_t tellCallback(void * userdata)
     return foundSome;
 }
 
--(BOOL)process
+-(eProcessState)process
 {
     if (appState == STATE_BEGIN) {
-        return [self processBegin];
+        return ([self processBegin] ? eProcessState_Success : eProcessState_Error);
     } else if (appState == STATE_DECODING) {
-        return [self processDecoding];
+        // falseは終端パケット
+        return ([self processDecoding] ? eProcessState_Success : eProcessState_EndPacket);
     } else {
         // uhhh...
         [OGVKit.singleton.logger errorWithFormat:@"Invalid appState in -[OGVDecoderWebM process]\n"];
-        return NO;
+        return eProcessState_Error;
     }
 }
 
@@ -653,6 +698,17 @@ static int64_t tellCallback(void * userdata)
 }
 
 
+-(void)clearQueue
+{
+    if (self.hasVideo) {
+        [videoPackets flush];
+    }
+    
+    if (self.hasAudio) {
+        [audioPackets flush];
+    }
+}
+
 -(void)flush
 {
     if (self.hasVideo) {
@@ -681,20 +737,36 @@ static int64_t tellCallback(void * userdata)
 }
 
 - (BOOL)seek:(float)seconds
+ cancelQueue:(SeekCancelQueue*)cancelQueue
 {
     if (self.seekable) {
         int64_t nanoseconds = (int64_t)(seconds * NSEC_PER_SEC);
         int ret = nestegg_track_seek(demuxContext, self.hasVideo ? videoTrack : audioTrack, nanoseconds);
         if (ret < 0) {
             // uhhh.... not good.
+            // シーク情報がない場合こっちにくる
 #ifdef OGVKIT_WEBM_SEEK_BRUTE_FORCE
-            [OGVKit.singleton.logger errorWithFormat:@"brute force WebM seek; restarting file"];
-            [self.inputStream seek:0L blocking:YES];
-            ret = nestegg_init(&demuxContext, ioCallbacks, logCallback, -1);
-            if (ret < 0) {
-                [OGVKit.singleton.logger errorWithFormat:@"nestegg_init returned %d", ret];
+            // 現在時間の2秒以上先にシークする場合はそのまま探させる
+            float timestamp = [self frameTimestamp];
+            if(timestamp == -1 || seconds < timestamp + 2.0){
+                // 先頭から探す
+                [self flush];
+                [OGVKit.singleton.logger errorWithFormat:@"brute force WebM seek; restarting file"];
+                // ここ直す
+                [self.inputStream seek:0L blocking:YES];
+                ret = nestegg_init(&demuxContext, ioCallbacks, logCallback, -1);
+                if (ret < 0) {
+                    [OGVKit.singleton.logger errorWithFormat:@"nestegg_init returned %d", ret];
+                }
             }
             while (YES) {
+                
+                // 中断
+                if([cancelQueue isCancel:nil]){
+                    NSLog(@"debug print seekInfo skip decoderWebM");
+                    return YES;
+                }
+                
                 nestegg_packet *nepacket;
                 ret = nestegg_read_packet(demuxContext, &nepacket);
                 if (ret == 0) {
@@ -702,16 +774,29 @@ static int64_t tellCallback(void * userdata)
                     [OGVKit.singleton.logger debugWithFormat:@"End of stream during brute-force WebM seek"];
                     return NO;
                 } else if (ret > 0) {
+                    // mod shimada
                     OGVDecoderWebMPacket *packet = [[OGVDecoderWebMPacket alloc] initWithNesteggPacket:nepacket];
-                    if (packet.timestamp < seconds) {
-                        // keep going
-                        continue;
+                    // キーフレーム毎に蓄積キューを削除する
+                    if (packet.isKeyFrame){
+                        NSLog(@"debug print seekInfo search packet isKeyFrame [true] timestamp [%f]",packet.timestamp);
+                        [self clearQueue];
                     } else {
-                        // We found it!
-                        [OGVKit.singleton.logger debugWithFormat:@"brute force WebM seek found destination!"];
-                        [self _queue:packet];
+                        NSLog(@"debug print seekInfo search packet isKeyFrame [false] timestamp [%f]",packet.timestamp);
+                    }
+                    [self _queue:packet];
+                    if (packet.timestamp >= seconds) {
                         return YES;
                     }
+                    //
+//                    if (packet.timestamp < seconds) {
+//                        // keep going
+//                        continue;
+//                    } else {
+//                        // We found it!
+//                        [OGVKit.singleton.logger debugWithFormat:@"brute force WebM seek found destination!"];
+//                        [self _queue:packet];
+//                        return YES;
+//                    }
                 } else {
                     // err
                     [OGVKit.singleton.logger errorWithFormat:@"nestegg_read_packet returned %d", ret];

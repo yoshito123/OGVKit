@@ -117,6 +117,7 @@ static BOOL OGVPlayerViewDidRegisterIconFont = NO;
     [self updateTimeLabel];
     if (_inputStream) {
         state = [[OGVPlayerState alloc] initWithInputStream:_inputStream
+                                                  startTime:self.startTime
                                                    delegate:self
                                               delegateQueue:NULL];
     }
@@ -124,7 +125,7 @@ static BOOL OGVPlayerViewDidRegisterIconFont = NO;
 
 -(void)play
 {
-    [state play];
+    [state play:NO];
 }
 
 -(void)dealloc
@@ -153,10 +154,15 @@ static BOOL OGVPlayerViewDidRegisterIconFont = NO;
     }
 }
 
-- (void)seek:(float)seconds
+- (void)seek:(float)seconds completionHandler:(void (^)(BOOL))completionHandler
 {
     if (state) {
-        [state seek:seconds];
+        [state seek:seconds completionHandler:completionHandler];
+    } else {
+        // 起動前キャンセル
+        if(completionHandler){
+            completionHandler(NO);
+        }
     }
 }
 
@@ -168,6 +174,12 @@ static BOOL OGVPlayerViewDidRegisterIconFont = NO;
         return 0;
     }
 }
+
+- (void)changePlayRate:(float)rate
+{
+    [state changePlayRate:rate];
+}
+
 
 -(void)layoutSubviews
 {
@@ -203,32 +215,36 @@ static BOOL OGVPlayerViewDidRegisterIconFont = NO;
     [self addSubview:frameView];
 #endif
 
-    // Controls
-    UINib *nib = [UINib nibWithNibName:@"OGVPlayerView" bundle:bundle];
-    UIView *interface = [nib instantiateWithOwner:self options:nil][0];
-
-    // can this be set in the nib?
-    [self.pausePlayButton setTitleColor:[UIColor blackColor] forState:UIControlStateHighlighted];
-
-    // ok load that nib into our view \o/
-    interface.frame = self.bounds;
-    interface.translatesAutoresizingMaskIntoConstraints = NO;
-    [self addSubview:interface];
-
-    NSDictionary *layoutViews = NSDictionaryOfVariableBindings(interface);
-    [self addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:|[interface]|"
-                                                                 options:0
-                                                                 metrics:nil
-                                                                   views:layoutViews]];
-    [self addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"V:|[interface]|"
-                                                                 options:0
-                                                                 metrics:nil
-                                                                   views:layoutViews]];
-
-    // Events
-    UIGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self
-                                                                       action:@selector(onViewTapped:)];
-    [self addGestureRecognizer:tap];
+// mod shimada
+    self.startTime = 0.0;
+    
+//    // Controls
+//    UINib *nib = [UINib nibWithNibName:@"OGVPlayerView" bundle:bundle];
+//    UIView *interface = [nib instantiateWithOwner:self options:nil][0];
+//
+//    // can this be set in the nib?
+//    [self.pausePlayButton setTitleColor:[UIColor blackColor] forState:UIControlStateHighlighted];
+//
+//    // ok load that nib into our view \o/
+//    interface.frame = self.bounds;
+//    interface.translatesAutoresizingMaskIntoConstraints = NO;
+//    [self addSubview:interface];
+//
+//    NSDictionary *layoutViews = NSDictionaryOfVariableBindings(interface);
+//    [self addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:|[interface]|"
+//                                                                 options:0
+//                                                                 metrics:nil
+//                                                                   views:layoutViews]];
+//    [self addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"V:|[interface]|"
+//                                                                 options:0
+//                                                                 metrics:nil
+//                                                                   views:layoutViews]];
+//
+//
+//    // Events
+//    UIGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self
+//                                                                       action:@selector(onViewTapped:)];
+//    [self addGestureRecognizer:tap];
 
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(appDidEnterBackground:)
@@ -248,42 +264,45 @@ static BOOL OGVPlayerViewDidRegisterIconFont = NO;
     return context;
 }
 
-- (IBAction)togglePausePlay:(id)sender
-{
-    if (state) {
-        if (state.paused) {
-            [state play];
-        } else {
-            [state pause];
-        }
-    }
-}
+// 未使用
+//- (IBAction)togglePausePlay:(id)sender
+//{
+//    if (state) {
+//        if (state.paused) {
+//            [state play];
+//        } else {
+//            [state pause];
+//        }
+//    }
+//}
 
--(void)onViewTapped:(id)obj
-{
-    if (state && !state.paused) {
-        if ([self controlsAreHidden]) {
-            [self showControls];
-        } else if ([self controlsAreVisible]) {
-            [self hideControls];
-        } else {
-            // controls are in transition; don't mess with them.
-        }
-    }
-}
+// 未使用
+//-(void)onViewTapped:(id)obj
+//{
+//    if (state && !state.paused) {
+//        if ([self controlsAreHidden]) {
+//            [self showControls];
+//        } else if ([self controlsAreVisible]) {
+//            [self hideControls];
+//        } else {
+//            // controls are in transition; don't mess with them.
+//        }
+//    }
+//}
 
-- (IBAction)onProgressSliderChanged:(id)sender {
-    if (state.seekable) {
-        seeking = YES;
-        if (seekTimeout) {
-            [seekTimeout invalidate];
-        }
-        seekTimeout = [NSTimer timerWithTimeInterval:0.25f target:self selector:@selector(onSeekTimeout:) userInfo:state repeats:NO];
-        [[NSRunLoop currentRunLoop] addTimer:seekTimeout forMode:NSRunLoopCommonModes];
-
-        [self updateTimeLabel];
-    }
-}
+// 未使用
+//- (IBAction)onProgressSliderChanged:(id)sender {
+//    if (state.seekable) {
+//        seeking = YES;
+//        if (seekTimeout) {
+//            [seekTimeout invalidate];
+//        }
+//        seekTimeout = [NSTimer timerWithTimeInterval:0.25f target:self selector:@selector(onSeekTimeout:) userInfo:state repeats:NO];
+//        [[NSRunLoop currentRunLoop] addTimer:seekTimeout forMode:NSRunLoopCommonModes];
+//
+//        [self updateTimeLabel];
+//    }
+//}
 
 - (IBAction)onProgressSliderReleased:(id)sender {
     if (seeking) {
@@ -292,7 +311,7 @@ static BOOL OGVPlayerViewDidRegisterIconFont = NO;
             seekTimeout = nil;
 
             float targetTime = self.progressSlider.value * state.duration;
-            [state seek:targetTime];
+            [state seek:targetTime completionHandler:nil];
             [self.activityIndicator startAnimating];
             self.activityIndicator.hidden = NO;
             // we'll pick this up in ogvPlayerStateDidSeek
@@ -304,7 +323,7 @@ static BOOL OGVPlayerViewDidRegisterIconFont = NO;
 {
     if (timer.userInfo == state) {
         float targetTime = self.progressSlider.value * state.duration;
-        [state seek:targetTime];
+        [state seek:targetTime completionHandler:nil];
 
         seekTimeout = nil;
     }
@@ -529,26 +548,6 @@ static BOOL OGVPlayerViewDidRegisterIconFont = NO;
         if (sender == self->state) {
             if ([self.delegate respondsToSelector:@selector(ogvPlayerDidEnd:)]) {
                 [self.delegate ogvPlayerDidEnd:self];
-            }
-        }
-    });
-}
-
-- (void)ogvPlayerStateDidSeek:(OGVPlayerState *)sender
-{
-    dispatch_async(dispatch_get_main_queue(), ^() {
-        if (sender == self->state) {
-            self->seeking = NO;
-            self.activityIndicator.hidden = YES;
-            [self.activityIndicator stopAnimating];
-            [self updateTimeLabel];
-
-#ifdef USE_LAYER
-            [displayLayer flush];
-#endif
-
-            if ([self.delegate respondsToSelector:@selector(ogvPlayerDidSeek:)]) {
-                [self.delegate ogvPlayerDidSeek:self];
             }
         }
     });

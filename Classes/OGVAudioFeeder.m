@@ -65,6 +65,8 @@ static void OGVAudioFeederPropListener(void *data, AudioQueueRef queue, AudioQue
 
 @implementation OGVAudioFeeder {
 
+    __weak id<OGVAudioFeederDelegate> delegate;
+    
     NSObject *timeLock;
     
     Float32 *circularBuffer;
@@ -81,6 +83,9 @@ static void OGVAudioFeederPropListener(void *data, AudioQueueRef queue, AudioQue
     UInt32 sampleSize;
     UInt32 bufferSize;
     UInt32 bufferByteSize;
+    
+    // mod shimada
+    float playRate;
 
     BOOL isStarting;
     BOOL isRunning;
@@ -90,10 +95,12 @@ static void OGVAudioFeederPropListener(void *data, AudioQueueRef queue, AudioQue
 }
 
 -(id)initWithFormat:(OGVAudioFormat *)format
+           delegate:(id<OGVAudioFeederDelegate>)aDelegate
 {
     self = [self init];
     if (self) {
         timeLock = [[NSObject alloc] init];
+        delegate = aDelegate;
 
         _format = format;
         isStarting = NO;
@@ -108,6 +115,9 @@ static void OGVAudioFeederPropListener(void *data, AudioQueueRef queue, AudioQue
         sampleSize = sizeof(Float32);
         bufferSize = 1024;
         bufferByteSize = bufferSize * sampleSize * format.channels;
+        
+        // mod shimada
+        playRate = 1.0f;
 
         circularBuffer = (Float32 *)malloc(circularBufferSize * sampleSize * format.channels);
         circularHead = 0;
@@ -131,6 +141,16 @@ static void OGVAudioFeederPropListener(void *data, AudioQueueRef queue, AudioQue
                                        NULL,
                                        0,
                                        &self->queue);
+        });
+        
+        // mod shimada(pitch変更許可)
+        throwIfError(^() {
+            UInt32 trueValue = 1;
+            return AudioQueueSetProperty(self->queue, kAudioQueueProperty_EnableTimePitch, &trueValue, sizeof(trueValue));
+        });
+        throwIfError(^() {
+            UInt32 timePitchAlgorithm = kAudioQueueTimePitchAlgorithm_Spectral;
+            return AudioQueueSetProperty(self->queue, kAudioQueueProperty_TimePitchAlgorithm, &timePitchAlgorithm, sizeof(timePitchAlgorithm));
         });
         
         for (int i = 0; i < nBuffers; i++) {
@@ -338,9 +358,53 @@ static void OGVAudioFeederPropListener(void *data, AudioQueueRef queue, AudioQue
                                                  OGVAudioFeederPropListener,
                                                  (__bridge void *)self);
         });
+        
+        // 起動直後の処理
+        if ([self->delegate respondsToSelector:@selector(ogvAudioFeederStartUP)]) {
+            [self->delegate ogvAudioFeederStartUP];
+        }
+    }
+}
 
+/**
+ * 起動直後専用処理
+ */
+-(void)startRun
+{
+    throwIfError(^() {
+        return AudioQueueStart(self->queue, NULL);
+        
+        [self changePlayRate:playRate];
+    });
+}
+
+-(void)pause
+{
+    if(isStarting || isRunning){
+        @synchronized (timeLock) {
+            throwIfError(^() {
+                return AudioQueuePause(self->queue);
+            });
+        }
+    }
+}
+
+-(void)pauseOff
+{
+    @synchronized (timeLock) {
         throwIfError(^() {
             return AudioQueueStart(self->queue, NULL);
+        });
+    }
+}
+
+
+-(void)changePlayRate:(float)rate
+{
+    playRate = rate;
+    if(isStarting || isRunning){
+        throwIfError(^() {
+            return AudioQueueSetParameter(self->queue, kAudioQueueParam_PlayRate, rate);
         });
     }
 }

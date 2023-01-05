@@ -538,7 +538,7 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
     return nil != [audioPackets dequeue];
 }
 
-- (BOOL) decodeFrameWithBlock:(void (^)(OGVVideoBuffer *))block
+- (BOOL)decodeFrameWithBlock:(BOOL)isMakeBuffer :(void (^)(OGVVideoBuffer *))block
 {
     OGVDecoderOggPacket *packet = [videoPackets dequeue];
 
@@ -560,7 +560,8 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
                                                                          CrStride:ycbcr[2].stride
                                                                         timestamp:videobuf_time];
             block(frame);
-            [frame neuter];
+            // 使用元で破棄するよう変更
+            //[frame neuter];
             return YES;
         } else {
             [OGVKit.singleton.logger errorWithFormat:@"Theora decoder failed mysteriously? %d", ret];
@@ -572,7 +573,7 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
     return NO;
 }
 
-- (BOOL)decodeAudioWithBlock:(void (^)(OGVAudioBuffer *))block
+- (BOOL)decodeAudioWithBlock:(BOOL)isMakeBuffer :(void (^)(OGVAudioBuffer *))block
 {
     OGVDecoderOggPacket *packet = [audioPackets dequeue];
 
@@ -640,7 +641,7 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
     return NO;
 }
 
-- (BOOL)process
+- (eProcessState)process
 {
     BOOL needData;
     switch (appState) {
@@ -651,11 +652,11 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
                 self.dataReady = YES;
                 
                 appState = STATE_DECODING;
-                return YES;
+                return eProcessState_Success;
             } else {
                 // something exploded
                 [OGVKit.singleton.logger errorWithFormat:@"error during Ogg duration extraction"];
-                return NO;
+                return eProcessState_Error;
             }
             break;
 
@@ -671,21 +672,21 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
 
         default:
             [OGVKit.singleton.logger errorWithFormat:@"Invalid internal state %d in OGVDecoderOgg", (int)appState];
-            return NO;
+            return eProcessState_Error;
     }
 
     if (needData) {
-        return [self processNextPackets];
+        return ([self processNextPackets] ? eProcessState_Success : eProcessState_Error);
     } else if (self.inputStream.state == OGVInputStreamStateReading) {
         // nothing to do right now (??)
-        return 1;
+        return eProcessState_Success;
     } else if (self.inputStream.state == OGVInputStreamStateSeeking) {
         // this shouldn't actually happen!
         [OGVKit.singleton.logger errorWithFormat:@"Called decoder process during seeking, beware!"];
-        return 1;
+        return eProcessState_Success;
     } else {
         [OGVKit.singleton.logger errorWithFormat:@"Input stream done or errored, state %d", (int)self.inputStream.state];
-        return 0;
+        return eProcessState_Error;
     }
 }
 
@@ -764,6 +765,7 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
 }
 
 - (BOOL)seek:(float)seconds
+ cancelQueue:(SeekCancelQueue*)cancelQueue
 {
     if (self.seekable) {
         if (skeletonHeadersComplete) {
@@ -832,7 +834,7 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
     if (self.hasVideo) {
         while (YES) {
             if ([videoPackets empty]) {
-                if ([self process]) {
+                if ([self process] == eProcessState_Success) {
                     continue;
                 } else {
                     break;
@@ -916,7 +918,7 @@ static int readPacketCallback(OGGZ *oggz, oggz_packet *packet, long serialno, vo
     // This means we have to derive the keyframe time and seek *again*.
     if (self.hasVideo) {
         while ([videoPackets empty]) {
-            if ([self process]) {
+            if ([self process] == eProcessState_Success) {
                 continue;
             } else {
                 break;

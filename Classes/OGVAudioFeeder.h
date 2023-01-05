@@ -6,6 +6,19 @@
 //  Copyright (c) 2014-2015 Brion Vibber. All rights reserved.
 //
 
+/**
+ * Delegate
+ */
+@protocol OGVAudioFeederDelegate<NSObject>
+
+/**
+ * 初回起動時
+ */
+@optional
+-(void)ogvAudioFeederStartUP;
+
+@end
+
 @interface OGVAudioFeeder : NSObject
 
 @property (readonly) OGVAudioFormat *format;
@@ -13,7 +26,8 @@
 /**
  * Initializer!
  */
--(id)initWithFormat:(OGVAudioFormat *)format;
+-(id)initWithFormat:(OGVAudioFormat *)format
+           delegate:(id<OGVAudioFeederDelegate>)aDelegate;
 
 
 /**
@@ -69,5 +83,25 @@
  * Are we closed?
  */
 -(BOOL)isClosed;
+
+
+/**
+ * 起動直後専用開始処理
+ */
+-(void)startRun;
+/**
+ * 一時停止
+ */
+-(void)pause;
+
+/**
+ * 一時停止解除
+ */
+-(void)pauseOff;
+
+/**
+ * 再生速度変更
+ */
+-(void)changePlayRate:(float)rate;
 
 @end

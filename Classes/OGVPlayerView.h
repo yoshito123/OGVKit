@@ -28,9 +28,6 @@
 -(void)ogvPlayerDidEnd:(OGVPlayerView *)sender;
 
 @optional
--(void)ogvPlayerDidSeek:(OGVPlayerView *)sender;
-
-@optional
 -(void)ogvPlayerControlsWillHide:(OGVPlayerView *)sender;
 
 @optional
@@ -59,9 +56,12 @@
 @property (readonly) BOOL paused;
 @property (readonly) float playbackPosition;
 
+@property (nonatomic) float startTime;
+
 -(void)play;
 -(void)pause;
--(void)seek:(float)seconds;
+-(void)seek:(float)seconds completionHandler:(void (^)(BOOL))completionHandler;
+-(void)changePlayRate:(float)rate;
 
 -(OGVPlayerState *)state;
 

@@ -59,6 +59,26 @@
     return (float)timestamp / NSEC_PER_SEC;
 }
 
+-(BOOL)isKeyFrame
+{
+    unsigned int track;
+    nestegg_packet_track(self.nesteggPacket, &track);
+    if(track == 0){ // videoTrack
+        return (nestegg_packet_has_keyframe(self.nesteggPacket) == NESTEGG_PACKET_HAS_KEYFRAME_TRUE);
+    } else {
+        return NO;
+    }
+}
+
+-(void)offset
+{
+    const unsigned int* partition_offsets;
+    unsigned char partition_offsets_num;
+    nestegg_packet_offsets(self.nesteggPacket, &partition_offsets, &partition_offsets_num);
+    
+    NSLog(@"debug print offset [%d]",partition_offsets_num);
+}
+
 - (unsigned int)count
 {
     unsigned int count;
