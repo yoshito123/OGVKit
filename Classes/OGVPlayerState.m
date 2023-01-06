@@ -52,7 +52,6 @@ typedef NS_ENUM (NSUInteger, ePlayState) {
 -(void)addQueue:(SeekQueueItem*)value
 {
     @synchronized (self.queueLock) {
-        //NSLog(@"debug print seekInfo add queue [%f][%@]",time,[NSThread currentThread]);
         [self.queue queue:value];
     }
 }
@@ -187,11 +186,9 @@ typedef NS_ENUM (NSUInteger, ePlayState) {
 -(void)play:(BOOL)isSeekAfter
 {
     dispatch_async(decodeQueue, ^() {
-        NSLog(@"debug print pause play");
         if (isSeekAfter && self->playState == ePlayState_Pause){
             // シーク中にPauseするとpauseが呼び出された後にplayが呼び出されるので
             // pauseになっていたら再生しない
-            NSLog(@"debug print pause play isPause");
         } else if (self->playState == ePlayState_Play) {
             // Already playing
         } else if (self->ended) {
@@ -211,7 +208,6 @@ typedef NS_ENUM (NSUInteger, ePlayState) {
 {
     dispatch_async(decodeQueue, ^() {
         
-        NSLog(@"debug print pause action");
         self->playAfterLoad = NO;
         
         if (self->audioFeeder) {
@@ -293,7 +289,6 @@ typedef NS_ENUM (NSUInteger, ePlayState) {
                               cancelQueue:self->seekChancelQueue];
             
             if([self->seekChancelQueue isCancel]){
-                NSLog(@"debug print seekInfo skip seek1");
                 item.completionHandler(NO);
                 return;
             }
@@ -308,7 +303,6 @@ typedef NS_ENUM (NSUInteger, ePlayState) {
                 [self syncAfterSeek:item.time exact:YES];
                 
                 if([self->seekChancelQueue isCancel]){
-                    NSLog(@"debug print seekInfo skip seek2");
                     item.completionHandler(NO);
                     return;
                 }
@@ -339,7 +333,6 @@ typedef NS_ENUM (NSUInteger, ePlayState) {
                         [frameBuffer neuter];
                     }];
                 }
-                NSLog(@"debug print pause seek end");
                 if (self->beforePlayState == ePlayState_Play) {
                     [self play:YES];
                 }
@@ -377,11 +370,11 @@ typedef NS_ENUM (NSUInteger, ePlayState) {
 
 -(float)playbackPosition
 {
-    NSLog(@"debug print playbackPosition1 playState [%@] baseTime [%f] initTime [%f] offsetTime [%f]"
-          ,(playState == ePlayState_Play ? @"play" : (playState == ePlayState_Stop ? @"stop" : @"pause"))
-          ,self.baseTime
-          ,initTime
-          ,offsetTime);
+//    NSLog(@"debug print playbackPosition1 playState [%@] baseTime [%f] initTime [%f] offsetTime [%f]"
+//          ,(playState == ePlayState_Play ? @"play" : (playState == ePlayState_Stop ? @"stop" : @"pause"))
+//          ,self.baseTime
+//          ,initTime
+//          ,offsetTime);
         
     double position = 0.0;
     if (playState != ePlayState_Stop) {
@@ -395,11 +388,6 @@ typedef NS_ENUM (NSUInteger, ePlayState) {
 
 - (float)baseTime
 {
-    NSLog(@"debug print playbackPosition2 hasAudio [%@] audioFeeder [%@] audioFeeder.playbackPosition [%f]"
-          ,(decoder.hasAudio ? @"true" : @"false")
-          ,(audioFeeder ? @"true" : @"false")
-          ,audioFeeder.playbackPosition);
-    
     if (decoder.hasAudio) {
         if(audioFeeder){
             return audioFeeder.playbackPosition;
@@ -455,7 +443,8 @@ typedef NS_ENUM (NSUInteger, ePlayState) {
         [self processHeaders];
     } else {
         [OGVKit.singleton.logger fatalWithFormat:@"no decoder, this should not happen"];
-        abort();
+        // TODO)エラーコールバックする
+        //abort();
     }
     // @fixme update our state
 }
@@ -658,15 +647,6 @@ typedef NS_ENUM (NSUInteger, ePlayState) {
                 
                 float audioBufferedDuration = [audioFeeder secondsQueued];
                 BOOL readyForAudio = (audioBufferedDuration <= bufferDuration);
-                
-                NSLog(@"debug print processNextFrame1 readyForAudio %@ audioBufferedDuration %f bufferDuration %f"
-                      ,readyForAudio ? @"true" : @"false"
-                      ,audioBufferedDuration
-                      ,bufferDuration);
-                NSLog(@"debug print processNextFrame2 audioTimestamp %f playbackPosition %f"
-                      ,decoder.audioTimestamp
-                      ,playbackPosition);
-                
                 if (readyForAudio) {
                     BOOL ok = [decoder decodeAudioWithBlock:YES :^(OGVAudioBuffer *audioBuffer) {
                         if (![self->audioFeeder bufferData:audioBuffer]) {
@@ -729,11 +709,6 @@ typedef NS_ENUM (NSUInteger, ePlayState) {
                 continue;
             }
         }
-        
-        NSLog(@"debug print processNextFrame playbackPosition %f delay %f frameEndTimestamp %f"
-              ,playbackPosition
-              ,nextDelay
-              ,frameEndTimestamp);
 
         if (nextDelay < INFINITY) {
             [self pingProcessing:nextDelay];
@@ -783,15 +758,7 @@ typedef NS_ENUM (NSUInteger, ePlayState) {
     };
         
     while (YES) {
-        
-        NSLog(@"debug print syncAfterSeek before audioReady %@ frameReady %@ frameTimestamp %f audioTimestamp %f"
-              ,(decoder.audioReady ? @"true" : @"false")
-              ,(decoder.frameReady ? @"true" : @"false")
-              ,decoder.frameTimestamp
-              ,decoder.audioTimestamp);
-        
         if([self->seekChancelQueue isCancel]){
-            NSLog(@"debug print seekInfo skip seek3");
             return NO;
         }
         eProcessState processState = eProcessState_Success;
@@ -821,15 +788,8 @@ typedef NS_ENUM (NSUInteger, ePlayState) {
         
         
         if([self->seekChancelQueue isCancel]){
-            NSLog(@"debug print seekInfo skip seek3");
             return NO;
         }
-        
-        NSLog(@"debug print syncAfterSeek after audioReady %@ frameReady %@ frameTimestamp %f audioTimestamp %f"
-              ,(decoder.audioReady ? @"true" : @"false")
-              ,(decoder.frameReady ? @"true" : @"false")
-              ,decoder.frameTimestamp
-              ,decoder.audioTimestamp);
         
         if (exact) {
             while (decoder.hasAudio && decoder.audioReady && decoder.audioTimestamp < target && ![decoder audioQueueIsEmpty]) {
@@ -907,9 +867,7 @@ typedef NS_ENUM (NSUInteger, ePlayState) {
 #pragma mark - OGVAudioFeederDelegate methods
 -(void)ogvAudioFeederStartUP
 {
-    NSLog(@"debug print pause ogvAudioFeederStartUP1");
     if(playState == ePlayState_Play && audioFeeder && ![audioFeeder isClosed]){
-        NSLog(@"debug print pause ogvAudioFeederStartUP2");
         [audioFeeder startRun];
     }
 }

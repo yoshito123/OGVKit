@@ -38,9 +38,6 @@
  */
 - (void)synthesizeOggPacket:(ogg_packet *)dest;
 #endif
-
--(void)offset;
-
 @property (readonly) nestegg_packet *nesteggPacket;
 
 @property (readonly) float timestamp;

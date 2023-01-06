@@ -30,7 +30,6 @@
         _Cb = Cb;
         _Cr = Cr;
         _timestamp = timestamp;
-        NSLog(@"debug print initWithFormat timestamp %f",_timestamp);
         _sampleBuffer = NULL;
     }
     return self;
@@ -46,7 +45,6 @@
         _Cb = nil;
         _Cr = nil;
         _timestamp = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sampleBuffer));
-        NSLog(@"debug print initWithFormat2 timestamp %f",_timestamp);
         _sampleBuffer = sampleBuffer;
         CFRetain(_sampleBuffer);
     }
@@ -155,8 +153,6 @@
     CMSampleTimingInfo sampleTiming;
     sampleTiming.duration = CMTimeMake((1.0 / 60) * 1000, 1000);
     sampleTiming.presentationTimeStamp = CMTimeMake(self.timestamp * 1000, 1000);
-    
-    NSLog(@"debug print copyAsSampleBuffer timestamp %f",self.timestamp);
     sampleTiming.decodeTimeStamp = kCMTimeInvalid;
     
     CMSampleBufferRef sampleBuffer;

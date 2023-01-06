@@ -70,15 +70,6 @@
     }
 }
 
--(void)offset
-{
-    const unsigned int* partition_offsets;
-    unsigned char partition_offsets_num;
-    nestegg_packet_offsets(self.nesteggPacket, &partition_offsets, &partition_offsets_num);
-    
-    NSLog(@"debug print offset [%d]",partition_offsets_num);
-}
-
 - (unsigned int)count
 {
     unsigned int count;

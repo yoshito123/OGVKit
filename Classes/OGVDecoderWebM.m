@@ -398,12 +398,7 @@ static int64_t tellCallback(void * userdata)
         // end of stream?
         return NO;
     } else if (ret > 0) {
-        OGVDecoderWebMPacket* packet = [[OGVDecoderWebMPacket alloc] initWithNesteggPacket:nepacket];
-        NSLog(@"debug print processNextPacket packet isKeyFrame [%@] timestamp [%f]"
-              ,packet.isKeyFrame ? @"true" : @"false"
-              ,packet.timestamp);
-        [packet offset];
-        [self _queue:packet];
+        [self _queue:[[OGVDecoderWebMPacket alloc] initWithNesteggPacket:nepacket]];
     }
     return YES;
 }
@@ -412,24 +407,6 @@ static int64_t tellCallback(void * userdata)
 {
     unsigned int track;
     nestegg_packet_track(packet.nesteggPacket, &track);
-    
-    NSLog(@"debug print _queue [%@] timestamp %f"
-          ,(track == videoTrack ? @"videoTrack" : (track == audioTrack ? @"audioTrack" : @"badTrack"))
-          ,packet.timestamp);
-
-//    long long start_pos;
-//    long long end_pos;
-//    unsigned long long tstamp;
-//
-//    int result = nestegg_get_cue_point(demuxContext, 0,
-//                                       -1, &start_pos,
-//                                       &end_pos, &tstamp);
-//
-//    if(result >= 0){
-//        NSLog(@"debug print _queue [%@] timestamp %f"
-//              ,(track == videoTrack ? @"videoTrack" : (track == audioTrack ? @"audioTrack" : @"badTrack"))
-//              ,packet.timestamp);
-//    }
     
     if (self.hasVideo && track == videoTrack) {
         [videoPackets queue:packet];
@@ -468,7 +445,6 @@ static int64_t tellCallback(void * userdata)
         unsigned int chunks = packet.count;
 
         videobufTime = packet.timestamp;
-        NSLog(@"debug print decodeFrameWithBlock timestamp %f",videobufTime);
 
 //#ifdef OGVKIT_HAVE_VP8_DECODER
         // uh, can this happen? curiouser :D
@@ -576,9 +552,7 @@ static int64_t tellCallback(void * userdata)
     OGVDecoderWebMPacket *packet = [audioPackets dequeue];
 
     if (packet) {
-        
-        NSLog(@"debug print decodeAudioWithBlock timestamp %f [%@]",packet.timestamp, [NSThread currentThread]);
-        
+                
 //#ifdef OGVKIT_HAVE_VORBIS_DECODER
         if (audioCodec == NESTEGG_CODEC_VORBIS) {
             ogg_packet audioPacket;
@@ -763,7 +737,6 @@ static int64_t tellCallback(void * userdata)
                 
                 // 中断
                 if([cancelQueue isCancel]){
-                    NSLog(@"debug print seekInfo skip decoderWebM");
                     return YES;
                 }
                 
@@ -778,16 +751,13 @@ static int64_t tellCallback(void * userdata)
                     OGVDecoderWebMPacket *packet = [[OGVDecoderWebMPacket alloc] initWithNesteggPacket:nepacket];
                     // キーフレーム毎に蓄積キューを削除する
                     if (packet.isKeyFrame){
-                        NSLog(@"debug print seekInfo search packet isKeyFrame [true] timestamp [%f]",packet.timestamp);
                         [self clearQueue];
-                    } else {
-                        NSLog(@"debug print seekInfo search packet isKeyFrame [false] timestamp [%f]",packet.timestamp);
                     }
                     [self _queue:packet];
                     if (packet.timestamp >= seconds) {
                         return YES;
                     }
-                    //
+                    // 旧処理
 //                    if (packet.timestamp < seconds) {
 //                        // keep going
 //                        continue;
