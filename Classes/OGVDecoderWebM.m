@@ -762,7 +762,7 @@ static int64_t tellCallback(void * userdata)
             while (YES) {
                 
                 // 中断
-                if([cancelQueue isCancel:nil]){
+                if([cancelQueue isCancel]){
                     NSLog(@"debug print seekInfo skip decoderWebM");
                     return YES;
                 }

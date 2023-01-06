@@ -61,6 +61,7 @@ typedef NS_ENUM (NSUInteger, ePlayState) {
 -(SeekQueueItem*)lastPop
 {
     SeekQueueItem* result = nil;
+    NSMutableArray* actionArray = [[NSMutableArray alloc] init];
     @synchronized (self.queueLock) {
         while(![self.queue empty]){
             result = [self.queue dequeue];
@@ -69,23 +70,24 @@ typedef NS_ENUM (NSUInteger, ePlayState) {
             }
             else{
                 if(result.completionHandler != nil){
-                    // 最後のシークを処理するので途中はキャンセル
-                    result.completionHandler(NO);
+                    [actionArray addObject:result];
                 }
             }
         }
     }
+    
+    // ロック内で処理するとデッドロックする
+    for(SeekQueueItem* item in actionArray){
+        item.completionHandler(NO);
+    }
     return result;
 }
 
--(BOOL)isCancel:(void (^)(void))cancelAction
+-(BOOL)isCancel
 {
     BOOL result = NO;
     @synchronized (self.queueLock) {
         if(![self.queue empty]){
-            if(cancelAction != nil){
-                cancelAction();
-            }
             result = YES;
         }
     }
@@ -290,10 +292,9 @@ typedef NS_ENUM (NSUInteger, ePlayState) {
             BOOL ok = [self->decoder seek:item.time
                               cancelQueue:self->seekChancelQueue];
             
-            if([self->seekChancelQueue isCancel:^() {
+            if([self->seekChancelQueue isCancel]){
                 NSLog(@"debug print seekInfo skip seek1");
                 item.completionHandler(NO);
-            }]){
                 return;
             }
 
@@ -306,10 +307,9 @@ typedef NS_ENUM (NSUInteger, ePlayState) {
                 // We may have gone to a keyframe nearby.
                 [self syncAfterSeek:item.time exact:YES];
                 
-                if([self->seekChancelQueue isCancel:^() {
+                if([self->seekChancelQueue isCancel]){
                     NSLog(@"debug print seekInfo skip seek2");
                     item.completionHandler(NO);
-                }]){
                     return;
                 }
                 
@@ -790,7 +790,7 @@ typedef NS_ENUM (NSUInteger, ePlayState) {
               ,decoder.frameTimestamp
               ,decoder.audioTimestamp);
         
-        if([self->seekChancelQueue isCancel:nil]){
+        if([self->seekChancelQueue isCancel]){
             NSLog(@"debug print seekInfo skip seek3");
             return NO;
         }
@@ -820,7 +820,7 @@ typedef NS_ENUM (NSUInteger, ePlayState) {
         }
         
         
-        if([self->seekChancelQueue isCancel:nil]){
+        if([self->seekChancelQueue isCancel]){
             NSLog(@"debug print seekInfo skip seek3");
             return NO;
         }

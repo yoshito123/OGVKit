@@ -57,7 +57,7 @@
 
 -(void)addQueue:(SeekQueueItem*)value;
 -(SeekQueueItem*)lastPop;
--(BOOL)isCancel:(void (^)(void))cancelAction;
+-(BOOL)isCancel;
 
 @end
 

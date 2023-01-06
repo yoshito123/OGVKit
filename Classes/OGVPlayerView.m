@@ -123,12 +123,7 @@ static BOOL OGVPlayerViewDidRegisterIconFont = NO;
     }
 }
 
--(void)play
-{
-    [state play:NO];
-}
-
--(void)dealloc
+-(void)close
 {
     [[NSNotificationCenter defaultCenter] removeObserver:self
                                                     name:UIApplicationDidEnterBackgroundNotification
@@ -136,6 +131,16 @@ static BOOL OGVPlayerViewDidRegisterIconFont = NO;
     if (state) {
         [state cancel];
     }
+}
+
+-(void)play
+{
+    [state play:NO];
+}
+
+-(void)dealloc
+{
+    [self close];
 }
 
 -(BOOL)paused
@@ -473,9 +478,9 @@ static BOOL OGVPlayerViewDidRegisterIconFont = NO;
     
     // Draw on the main thread!
     dispatch_async(dispatch_get_main_queue(), ^() {
-        if (sender == state) {
+        if (sender == self->state) {
             //NSLog(@"Layer %d %@", displayLayer.status, displayLayer.error);
-            [displayLayer enqueueSampleBuffer:sampleBuffer];
+            [self->displayLayer enqueueSampleBuffer:sampleBuffer];
         }
         CFRelease(sampleBuffer);
     });
@@ -505,7 +510,7 @@ static BOOL OGVPlayerViewDidRegisterIconFont = NO;
             [self updateTimeLabel];
             
 #ifdef USE_LAYER
-            [displayLayer flush];
+            [self->displayLayer flush];
 #endif
 
             if (![self controlsAreVisible]) {

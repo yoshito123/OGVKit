@@ -58,6 +58,7 @@
 
 @property (nonatomic) float startTime;
 
+-(void)close;
 -(void)play;
 -(void)pause;
 -(void)seek:(float)seconds completionHandler:(void (^)(BOOL))completionHandler;
